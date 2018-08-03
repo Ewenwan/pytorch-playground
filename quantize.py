@@ -1,3 +1,4 @@
+#-*- coding:utf-8 -*-
 import argparse
 from utee import misc, quant, selector
 import torch
@@ -18,9 +19,9 @@ parser.add_argument('--logdir', default='log/default', help='folder to save to t
 
 parser.add_argument('--input_size', type=int, default=224, help='input size of image')
 parser.add_argument('--n_sample', type=int, default=20, help='number of samples to infer the scaling factor')
-parser.add_argument('--param_bits', type=int, default=8, help='bit-width for parameters')
-parser.add_argument('--bn_bits', type=int, default=32, help='bit-width for running mean and std')
-parser.add_argument('--fwd_bits', type=int, default=8, help='bit-width for layer output')
+parser.add_argument('--param_bits', type=int, default=8, help='bit-width for parameters')         # weight 和bias 量化位宽
+parser.add_argument('--bn_bits', type=int, default=32, help='bit-width for running mean and std') # bn层量化位宽
+parser.add_argument('--fwd_bits', type=int, default=8, help='bit-width for layer output')         # 激活值量化位宽
 parser.add_argument('--overflow_rate', type=float, default=0.0, help='overflow rate')
 args = parser.parse_args()
 
@@ -40,11 +41,11 @@ assert torch.cuda.is_available(), 'no cuda'
 torch.manual_seed(args.seed)
 torch.cuda.manual_seed(args.seed)
 
-# load model and dataset fetcher
+# 载入模型和数据集 load model and dataset fetcher
 model_raw, ds_fetcher, is_imagenet = selector.select(args.type, model_root=args.model_root)
 args.ngpu = args.ngpu if is_imagenet else 1
 
-# quantize parameters
+# 量化参数w和b  quantize parameters
 if args.param_bits < 32:
     state_dict = model_raw.state_dict()
     state_dict_quant = OrderedDict()
@@ -73,7 +74,7 @@ if args.param_bits < 32:
         print(k, bits)
     model_raw.load_state_dict(state_dict_quant)
 
-# quantize forward activation
+# 量化网络前向传播激活输出  a   quantize forward activation
 if args.fwd_bits < 32:
     model_raw = quant.duplicate_model_with_quant(model_raw, bits=args.fwd_bits, overflow_rate=args.overflow_rate,
                                                  counter=args.n_sample, type=args.quant_method)
@@ -81,7 +82,7 @@ if args.fwd_bits < 32:
     val_ds_tmp = ds_fetcher(10, data_root=args.data_root, train=False, input_size=args.input_size)
     misc.eval_model(model_raw, val_ds_tmp, ngpu=1, n_sample=args.n_sample, is_imagenet=is_imagenet)
 
-# eval model
+# 评估模型  eval model
 val_ds = ds_fetcher(args.batch_size, data_root=args.data_root, train=False, input_size=args.input_size)
 acc1, acc5 = misc.eval_model(model_raw, val_ds, ngpu=args.ngpu, is_imagenet=is_imagenet)
 
