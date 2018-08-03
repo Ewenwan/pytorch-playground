@@ -1,3 +1,4 @@
+#-*- coding:utf -8-*-
 from torch.autograd import Variable
 import torch
 from torch import nn
@@ -15,26 +16,30 @@ def compute_integral_part(input, overflow_rate):
     sf = math.ceil(math.log2(v+1e-12))
     return sf
 
+# 线性量化
 def linear_quantize(input, sf, bits):
     assert bits >= 1, bits
+    # 一位
     if bits == 1:
         return torch.sign(input) - 1
-    delta = math.pow(2.0, -sf)
+    
+    delta = math.pow(2.0, -sf)# 小数位 位宽 量化精度
     bound = math.pow(2.0, bits-1)
-    min_val = - bound
-    max_val = bound - 1
-    rounded = torch.floor(input / delta + 0.5)
+    min_val = - bound    # 上限制值
+    max_val = bound - 1  # 下限值
+    rounded = torch.floor(input / delta + 0.5)# 扩大后取整
 
-    clipped_value = torch.clamp(rounded, min_val, max_val) * delta
+    clipped_value = torch.clamp(rounded, min_val, max_val) * delta# 再缩回
     return clipped_value
 
+# 非线性对数量化 
 def log_minmax_quantize(input, bits):
     assert bits >= 1, bits
     if bits == 1:
         return torch.sign(input), 0.0, 0.0
 
-    s = torch.sign(input)
-    input0 = torch.log(torch.abs(input) + 1e-20)
+    s = torch.sign(input)#  正负号
+    input0 = torch.log(torch.abs(input) + 1e-20)# 对数值 得到2的对数 位宽
     v = min_max_quantize(input0, bits)
     v = torch.exp(v) * s
     return v
@@ -44,10 +49,10 @@ def log_linear_quantize(input, sf, bits):
     if bits == 1:
         return torch.sign(input), 0.0, 0.0
 
-    s = torch.sign(input)
-    input0 = torch.log(torch.abs(input) + 1e-20)
-    v = linear_quantize(input0, sf, bits)
-    v = torch.exp(v) * s
+    s = torch.sign(input)# 正负号
+    input0 = torch.log(torch.abs(input) + 1e-20)# 比特位
+    v = linear_quantize(input0, sf, bits)#对比特位进行量化
+    v = torch.exp(v) * s# 再指数 回 原数
     return v
 
 def min_max_quantize(input, bits):
